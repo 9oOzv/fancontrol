@@ -1,0 +1,10 @@
+[Unit]
+Description=Fan Control Service
+After=multi-user.target
+
+[Service]
+ExecStart=/usr/bin/python3 /srv/fancontrol/fancontrol.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
