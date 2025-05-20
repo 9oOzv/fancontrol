@@ -5,15 +5,45 @@ from time import time, sleep
 
 class Sensor:
 
+    name: str
+    label: str | None = None
+    path: Path | None = None
+
     def __init__(
         self,
         name: str,
-        input_path: str | Path,
+        label: str | None = None,
+        path: str | Path | None = None
     ):
         self.name = name
-        self.path = Path(input_path)
+        if path:
+            if not path.exists():
+                raise FileNotFoundError(f'Cannot find sensor {path}')
+            self.path = Path(path)
+        elif label:
+            self.label = label
+            self.resolve_path()
+        else:
+            self.path = None
 
-    def temp(self) -> float:
+    def resolve_path(self):
+        if self.path: return
+        for label_path in Path('/sys/class/hwmon').glob('hwmon*/temp*_label'):
+            with open(label_path) as f:
+                ilabel = f.read().strip()
+            if ilabel != self.label:
+                continue
+            path = label_path.parent / label_path.name.replace('label', 'input')
+            if not path.exists():
+                continue
+            self.path = path
+            print(f'Found sensor for `{self.name}`: {path}')
+            return
+        raise FileNotFoundError(f'Cannot find sensor {self.label}')
+
+    def temp(self) -> float | None:
+        if not self.path:
+            return None
         with open(self.path) as f:
             return float(f.read()) / 1000
 
@@ -95,17 +125,51 @@ class SlowSensor:
         ) / len(self.samples)
 
 class Fan:
+    
+    hwmon_name: str | None = None
+    pwm_index: int | None = None
+    path: Path | None = None
 
     def __init__(
         self,
         name: str,
-        pwm_path: str | Path,
+        hwmon_name: str | None = None,
+        pwm_index: int | None = None,
+        pwm_path: str | Path = None
     ):
         self.name = name
-        self.path = Path(pwm_path)
+        if pwm_path is not None:
+            path = Path(pwm_path)
+            if not path.exists():
+                raise FileNotFoundError(f'Cannot find PWM {pwm_path}')
+            self.path = path
+        elif hwmon_name and pwm_index:
+            self.hwmon_name = hwmon_name
+            self.pwm_index = pwm_index
+            self.resolve_path()
+        else:
+            self.path = None
+
+    def resolve_path(self):
+        if self.path: return
+        for name_path in Path('/sys/class/hwmon').glob('hwmon*/name'):
+            with open(name_path) as f:
+                iname = f.read().strip()
+            if iname != self.hwmon_name:
+                continue
+            path = name_path.parent / f'pwm{self.pwm_index}'
+            if not path.exists():
+                continue
+            self.path = path
+            print(f'Found PWM for `{self.name}`: {path}')
+            return
+        raise FileNotFoundError(f'Cannot find PWM {self.hwmon_name} {self.pwm_index}')
 
     def set(self, percent: float):
         print(f'{self.name}: Setting speed to {percent}%')
+        en = f'{self.path}_enable'
+        with open(en, 'w') as f:
+            f.write('1')
         with open(self.path, 'w') as f:
             f.write(str(int(percent / 100.0 * 255)))
 
@@ -182,8 +246,8 @@ c0 = Controller(
         MaxSensor(
             'CPU',
             [
-                Sensor('Tctl', '/sys/class/hwmon/hwmon2/temp1_input'),
-                Sensor('Tcctl', '/sys/class/hwmon/hwmon2/temp3_input'),
+                Sensor('Tctl', label='Tctl'),
+                Sensor('Tccd1', label='Tccd1')
             ],
         ),
         10
@@ -191,10 +255,10 @@ c0 = Controller(
     MultiFan(
         'CPU',
         [
-            Fan('Back', '/sys/class/hwmon/hwmon6/pwm1'),
-            Fan('Top', '/sys/class/hwmon/hwmon6/pwm2'),
-            Fan('Mid', '/sys/class/hwmon/hwmon6/pwm3'),
-            Fan('Bottom', '/sys/class/hwmon/hwmon6/pwm4'),
+            Fan('Back', hwmon_name='nct6799', pwm_index=1),
+            Fan('Top', hwmon_name='nct6799', pwm_index=2),
+            Fan('Mid', hwmon_name='nct6799', pwm_index=3),
+            Fan('Bottom', hwmon_name='nct6799', pwm_index=4),
         ],
     ),
     Curve([
