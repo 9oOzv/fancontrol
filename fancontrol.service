@@ -3,6 +3,7 @@ Description=Fan Control Service
 After=multi-user.target
 
 [Service]
+KillSignal=SIGINT
 ExecStart=/usr/bin/python3 /srv/fancontrol/fancontrol.py
 Restart=always
 
