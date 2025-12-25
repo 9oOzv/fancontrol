@@ -4,7 +4,7 @@ After=multi-user.target
 
 [Service]
 KillSignal=SIGINT
-ExecStart=/usr/bin/python3 /srv/fancontrol/fancontrol.py
+ExecStart=/usr/bin/python3 -u /srv/fancontrol/fancontrol.py
 Restart=always
 
 [Install]
